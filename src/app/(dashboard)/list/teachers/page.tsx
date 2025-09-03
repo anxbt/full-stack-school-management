@@ -7,9 +7,56 @@ import { Class, Prisma, Subject, Teacher } from "@prisma/client";
 import Image from "next/image";
 import Link from "next/link";
 import { ITEM_PER_PAGE } from "@/lib/settings";
+import { unstable_cache } from 'next/cache';
 import { auth } from "@clerk/nextjs/server";
 
 type TeacherList = Teacher & { subjects: Subject[] } & { classes: Class[] };
+
+// Cached version of your teacher query for better navigation UX
+const getTeachersWithCache = unstable_cache(
+  async (page: number, queryParams: Record<string, string | undefined>) => {
+    const query: Prisma.TeacherWhereInput = {};
+
+    if (queryParams) {
+      for (const [key, value] of Object.entries(queryParams)) {
+        if (value !== undefined) {
+          switch (key) {
+            case "classId":
+              query.lessons = {
+                some: {
+                  classId: parseInt(value),
+                },
+              };
+              break;
+            case "search":
+              query.name = { contains: value, mode: "insensitive" };
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+
+    return await prisma.$transaction([
+      prisma.teacher.findMany({
+        where: query,
+        include: {
+          subjects: true,
+          classes: true,
+        },
+        take: ITEM_PER_PAGE,
+        skip: ITEM_PER_PAGE * (page - 1),
+      }),
+      prisma.teacher.count({ where: query }),
+    ]);
+  },
+  ['teachers-list'], // Cache key
+  {
+    revalidate: 300, // Cache for 5 minutes (perfect for navigation)
+    tags: ['teachers'], // For manual cache invalidation if needed
+  }
+);
 
 const TeacherListPage = async ({
   searchParams,
@@ -106,43 +153,8 @@ const TeacherListPage = async ({
 
   const p = page ? parseInt(page) : 1;
 
-  // URL PARAMS CONDITION
-
-  const query: Prisma.TeacherWhereInput = {};
-
-  if (queryParams) {
-    for (const [key, value] of Object.entries(queryParams)) {
-      if (value !== undefined) {
-        switch (key) {
-          case "classId":
-            query.lessons = {
-              some: {
-                classId: parseInt(value),
-              },
-            };
-            break;
-          case "search":
-            query.name = { contains: value, mode: "insensitive" };
-            break;
-          default:
-            break;
-        }
-      }
-    }
-  }
-
-  const [data, count] = await prisma.$transaction([
-    prisma.teacher.findMany({
-      where: query,
-      include: {
-        subjects: true,
-        classes: true,
-      },
-      take: ITEM_PER_PAGE,
-      skip: ITEM_PER_PAGE * (p - 1),
-    }),
-    prisma.teacher.count({ where: query }),
-  ]);
+  // Use cached function for better navigation UX
+  const [data, count] = await getTeachersWithCache(p, queryParams);
 
   return (
     <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">

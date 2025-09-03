@@ -8,10 +8,58 @@ import { ITEM_PER_PAGE } from "@/lib/settings";
 import { Class, Prisma, Student } from "@prisma/client";
 import Image from "next/image";
 import Link from "next/link";
+import { unstable_cache } from 'next/cache';
 
 import { auth } from "@clerk/nextjs/server";
 
 type StudentList = Student & { class: Class };
+
+// Cached version of your student query for better navigation UX
+const getStudentsWithCache = unstable_cache(
+  async (page: number, queryParams: Record<string, string | undefined>) => {
+    const query: Prisma.StudentWhereInput = {};
+
+    if (queryParams) {
+      for (const [key, value] of Object.entries(queryParams)) {
+        if (value !== undefined) {
+          switch (key) {
+            case "teacherId":
+              query.class = {
+                lessons: {
+                  some: {
+                    teacherId: value,
+                  },
+                },
+              };
+              break;
+            case "search":
+              query.name = { contains: value, mode: "insensitive" };
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+
+    return await prisma.$transaction([
+      prisma.student.findMany({
+        where: query,
+        include: {
+          class: true,
+        },
+        take: ITEM_PER_PAGE,
+        skip: ITEM_PER_PAGE * (page - 1),
+      }),
+      prisma.student.count({ where: query }),
+    ]);
+  },
+  ['students-list'], // Cache key
+  {
+    revalidate: 300, // Cache for 5 minutes (perfect for navigation)
+    tags: ['students'], // For manual cache invalidation if needed
+  }
+);
 
 const StudentListPage = async ({
   searchParams,
@@ -100,44 +148,8 @@ const StudentListPage = async ({
 
   const p = page ? parseInt(page) : 1;
 
-  // URL PARAMS CONDITION
-
-  const query: Prisma.StudentWhereInput = {};
-
-  if (queryParams) {
-    for (const [key, value] of Object.entries(queryParams)) {
-      if (value !== undefined) {
-        switch (key) {
-          case "teacherId":
-            query.class = {
-              lessons: {
-                some: {
-                  teacherId: value,
-                },
-              },
-            };
-            break;
-          case "search":
-            query.name = { contains: value, mode: "insensitive" };
-            break;
-          default:
-            break;
-        }
-      }
-    }
-  }
-
-  const [data, count] = await prisma.$transaction([
-    prisma.student.findMany({
-      where: query,
-      include: {
-        class: true,
-      },
-      take: ITEM_PER_PAGE,
-      skip: ITEM_PER_PAGE * (p - 1),
-    }),
-    prisma.student.count({ where: query }),
-  ]);
+  // Use cached query instead of direct prisma call for better navigation UX
+  const [data, count] = await getStudentsWithCache(p, queryParams);
 
   return (
     <div className="bg-white p-4 rounded-md flex-1 m-4 mt-0">
