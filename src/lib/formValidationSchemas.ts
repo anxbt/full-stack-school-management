@@ -87,3 +87,16 @@ export const examSchema = z.object({
 });
 
 export type ExamSchema = z.infer<typeof examSchema>;
+
+export const schoolSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, { message: "School name is required!" }),
+  code: z.string().optional(),
+  address: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email({ message: "Invalid email address!" }).optional(),
+  logo: z.string().optional(),
+  domain: z.string().optional(),
+});
+
+export type SchoolSchema = z.infer<typeof schoolSchema>;

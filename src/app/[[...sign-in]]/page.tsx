@@ -62,7 +62,7 @@ const LoginPage = () => {
             Sign In
           </SignIn.Action>
         </SignIn.Step>
-      </SignIn.Root>
+      </SignIn.Root>  
     </div>
   );
 };

@@ -7,11 +7,69 @@ import {
   StudentSchema,
   SubjectSchema,
   TeacherSchema,
+  SchoolSchema,
 } from "./formValidationSchemas";
 import prisma from "./prisma";
 import { clerkClient } from "@clerk/nextjs/server";
+import { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 
-type CurrentState = { success: boolean; error: boolean };
+type CurrentState = { 
+  success: boolean; 
+  error: boolean;
+  message?: string; 
+};
+
+// Cached schools query for better navigation UX
+export const getSchoolsWithCache = unstable_cache(
+  async (page: number, queryParams: Record<string, string | undefined>) => {
+    const query: Prisma.SchoolWhereInput = {};
+    const ITEM_PER_PAGE = 10;
+
+    if (queryParams) {
+      for (const [key, value] of Object.entries(queryParams)) {
+        if (value !== undefined) {
+          switch (key) {
+            case "search":
+              query.name = { contains: value, mode: "insensitive" };
+              break;
+            case "active":
+              query.isActive = value === "true";
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+
+    return await prisma.$transaction([
+      prisma.school.findMany({
+        where: query,
+        take: ITEM_PER_PAGE,
+        skip: ITEM_PER_PAGE * (page - 1),
+        orderBy: {
+          createdAt: "desc"
+        },
+        include: {
+          _count: {
+            select: {
+              students: true,
+              teachers: true,
+              admins: true
+            }
+          }
+        }
+      }),
+      prisma.school.count({ where: query }),
+    ]);
+  },
+  ['schools-list'], // Cache key
+  {
+    revalidate: 300, // Cache for 5 minutes
+    tags: ['schools'], // For manual cache invalidation
+  }
+);
 
 export const createSubject = async (
   currentState: CurrentState,
@@ -466,3 +524,98 @@ export const deleteExam = async (
     return { success: false, error: true };
   }
 };
+
+
+export const createSchool = async (
+  currentState: CurrentState,
+  data: SchoolSchema
+) => {
+  try {
+    console.log("Creating school with data:", data);
+    
+    // Only include code if it's not empty
+    const schoolData: any = {
+      name: data.name,
+      address: data.address || undefined,
+      phone: data.phone || undefined,
+      email: data.email || undefined,
+      logo: data.logo || undefined,
+      domain: data.domain || undefined,
+    };
+    
+    // Only add code if it's not empty
+    if (data.code && data.code.trim() !== '') {
+      schoolData.code = data.code;
+    }
+    
+    await prisma.school.create({
+      data: schoolData
+    });
+
+    console.log("School created successfully");
+    revalidatePath("/super-admin/schools");
+    return { success: true, error: false };
+  } catch (err) {
+    console.error("Error creating school:", err);
+    
+    // Check for specific error types
+    const prismaError = err as any;
+    if (prismaError.code === 'P2002' && prismaError.meta?.target?.includes('code')) {
+      console.error("School code already exists. Please use a unique code.");
+      return { success: false, error: true, message: "School code already exists" };
+    }
+    
+    return { success: false, error: true };
+  }
+}
+
+export const updateSchool = async (
+  currentState: CurrentState,
+  data: SchoolSchema
+) => {
+  try {
+    console.log("Updating school with data:", data);
+    
+    await prisma.school.update({
+      where: {
+        id: data.id,
+      },
+      data: {
+        name: data.name,
+        code: data.code || undefined,
+        address: data.address || undefined,
+        phone: data.phone || undefined,
+        email: data.email || undefined,
+        logo: data.logo || undefined,
+        domain: data.domain || undefined,
+      },
+    });
+
+    console.log("School updated successfully");
+    revalidatePath("/super-admin/schools");
+    return { success: true, error: false };
+  } catch (err) {
+    console.error("Error updating school:", err);
+    return { success: false, error: true };
+  }
+}
+
+export const deleteSchool = async (
+  currentState: CurrentState,
+  data: FormData
+) => {
+  const id = data.get("id") as string;
+  try {
+    await prisma.school.delete({
+      where: {
+        id: id,
+      },
+    });
+
+    revalidatePath("/super-admin/schools");
+    return { success: true, error: false };
+  } catch (err) {
+    console.log(err);
+    return { success: false, error: true };
+  }
+}

@@ -7,23 +7,76 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SuperAdmin {
+  id        String   @id
+  username  String   @unique
+  email     String?  @unique
+  img       String?
+  createdAt DateTime @default(now())
+
+  // Super Admin can manage multiple schools
+  schools School[] // Many-to-many relationship
+}
+
 model Admin {
-  id       String @id
-  username String @unique
+  id       String  @id
+  username String  @unique
+  img      String?
+
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+
+  @@unique([username, schoolId]) // Unique within school
+}
+
+model School {
+  id      String  @id @default(cuid())
+  name    String
+  code    String? @unique // Short identifier (e.g., "GREENWOOD_HS")
+  address String?
+  phone   String?
+  email   String?
+  logo    String?
+  domain  String? @unique // Optional custom domain
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+
+  superAdmins  SuperAdmin[]
+  admins       Admin[]
+  teachers     Teacher[]
+  students     Student[]
+  parents      Parent[]
+  Grade        Grade[]
+  Class        Class[]
+  Subject      Subject[]
+  Lesson       Lesson[]
+  Exam         Exam[]
+  Attendance   Attendance[]
+  Event        Event[]
+  Announcement Announcement[]
 }
 
 model Student {
-  id          String       @id
-  username    String       @unique
-  name        String
-  surname     String
-  email       String?      @unique
-  phone       String?      @unique
-  address     String
-  img         String?
-  bloodType   String
-  sex         UserSex
-  createdAt   DateTime     @default(now())
+  id        String   @id
+  username  String   @unique
+  name      String
+  surname   String
+  email     String?  @unique
+  phone     String?  @unique
+  address   String
+  img       String?
+  bloodType String
+  sex       UserSex
+  birthday  DateTime
+  createdAt DateTime @default(now())
+
+  // Add school scoping
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   parentId    String
   parent      Parent       @relation(fields: [parentId], references: [id])
   classId     Int
@@ -32,37 +85,52 @@ model Student {
   grade       Grade        @relation(fields: [gradeId], references: [id])
   attendances Attendance[]
   results     Result[]
-  birthday    DateTime
+
+  @@unique([username, schoolId]) // Username unique within school
 }
 
 model Teacher {
-  id        String    @id
-  username  String    @unique
+  id        String   @id
+  username  String   @unique
   name      String
   surname   String
-  email     String?   @unique
-  phone     String?   @unique
+  email     String?  @unique
+  phone     String?  @unique
   address   String
   img       String?
   bloodType String
   sex       UserSex
-  createdAt DateTime  @default(now())
-  subjects  Subject[]
-  lessons   Lesson[]
-  classes   Class[]
+  createdAt DateTime @default(now())
   birthday  DateTime
+
+  // Add school scoping
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  subjects Subject[]
+  lessons  Lesson[]
+  classes  Class[]
+
+  @@unique([username, schoolId]) // Username unique within school
 }
 
 model Parent {
-  id        String    @id
-  username  String    @unique
+  id        String   @id
+  username  String   @unique
   name      String
   surname   String
-  email     String?   @unique
-  phone     String    @unique
+  email     String?  @unique
+  phone     String   @unique
   address   String
-  createdAt DateTime  @default(now())
-  students  Student[]
+  createdAt DateTime @default(now())
+
+  // Add school scoping
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  students Student[]
+
+  @@unique([username, schoolId]) // Username unique within school
 }
 
 model Grade {
@@ -71,12 +139,22 @@ model Grade {
 
   students Student[]
   classess Class[]
+
+  // Add school scoping
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([level, schoolId]) // Grade 1 can exist in multiple schools
 }
 
 model Class {
   id       Int    @id @default(autoincrement())
-  name     String @unique
+  name     String @unique // "1A", "2B",
   capacity Int
+
+  // Add school scoping
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
 
   supervisorId  String?
   supervisor    Teacher?       @relation(fields: [supervisorId], references: [id])
@@ -86,11 +164,18 @@ model Class {
   grade         Grade          @relation(fields: [gradeId], references: [id])
   events        Event[]
   announcements Announcement[]
+
+  @@unique([name, schoolId]) // Class "1A" can exist in multiple schools
 }
 
 model Subject {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  // 🔑 SCHOOL SCOPING
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   teachers Teacher[]
   lessons  Lesson[]
 }
@@ -101,6 +186,10 @@ model Lesson {
   day       Day
   startTime DateTime
   endTime   DateTime
+
+  // 🔑 SCHOOL SCOPING
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   subjectId   Int
   subject     Subject      @relation(fields: [subjectId], references: [id])
@@ -122,6 +211,10 @@ model Exam {
   lessonId Int
   lesson   Lesson   @relation(fields: [lessonId], references: [id])
   results  Result[]
+
+  // Add school scoping
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 }
 
 model Assignment {
@@ -152,6 +245,10 @@ model Attendance {
   date    DateTime
   present Boolean
 
+  // 🔑 SCHOOL SCOPING
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   studentId String
   student   Student @relation(fields: [studentId], references: [id])
   lessonId  Int
@@ -165,6 +262,9 @@ model Event {
   startTime   DateTime
   endTime     DateTime
 
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   classId Int?
   class   Class? @relation(fields: [classId], references: [id])
 }
@@ -174,6 +274,10 @@ model Announcement {
   title       String
   description String
   date        DateTime
+
+  // 🔑 SCHOOL SCOPING
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   classId Int?
   class   Class? @relation(fields: [classId], references: [id])
