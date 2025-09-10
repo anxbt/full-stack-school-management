@@ -43,6 +43,7 @@ export const teacherSchema = z.object({
   birthday: z.coerce.date({ message: "Birthday is required!" }),
   sex: z.enum(["MALE", "FEMALE"], { message: "Sex is required!" }),
   subjects: z.array(z.string()).optional(), // subject ids
+  schoolId: z.string().optional(), // school id
 });
 
 export type TeacherSchema = z.infer<typeof teacherSchema>;
@@ -94,9 +95,20 @@ export const schoolSchema = z.object({
   code: z.string().optional(),
   address: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email({ message: "Invalid email address!" }).optional(),
+  email: z.string().email({ message: "Invalid email address!" }).optional().or(z.literal("")),
   logo: z.string().optional(),
   domain: z.string().optional(),
 });
 
 export type SchoolSchema = z.infer<typeof schoolSchema>;
+
+// For creating schools WITH admin (required admin fields)
+export const schoolWithAdminSchema = schoolSchema.extend({
+  adminUsername: z.string().min(3, { message: "Admin username must be at least 3 characters" }),
+  adminPassword: z.string().min(8, { message: "Admin password must be at least 8 characters" }),
+  adminEmail: z.string().email({ message: "Invalid email address for admin" }).optional().or(z.literal("")),
+  adminFirstName: z.string().min(1, { message: "Admin first name is required" }),
+  adminLastName: z.string().min(1, { message: "Admin last name is required" }),
+});
+
+export type SchoolWithAdminSchema = z.infer<typeof schoolWithAdminSchema>;

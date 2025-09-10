@@ -8,6 +8,7 @@ import {
   SubjectSchema,
   TeacherSchema,
   SchoolSchema,
+  SchoolWithAdminSchema,
 } from "./formValidationSchemas";
 import prisma from "./prisma";
 import { clerkClient } from "@clerk/nextjs/server";
@@ -200,6 +201,20 @@ export const createTeacher = async (
   data: TeacherSchema
 ) => {
   try {
+    // For now, use a default school ID or get from session
+    // You'll need to implement proper school context later
+    let schoolId = data.schoolId || "school-1"; // Default to first school for testing
+    
+    // If no schoolId provided, try to get the first available school
+    if (!data.schoolId) {
+      const firstSchool = await prisma.school.findFirst({
+        select: { id: true }
+      });
+      if (firstSchool) {
+        schoolId = firstSchool.id;
+      }
+    }
+
     const user = await clerkClient.users.createUser({
       username: data.username,
       password: data.password,
@@ -221,6 +236,7 @@ export const createTeacher = async (
         bloodType: data.bloodType,
         sex: data.sex,
         birthday: data.birthday,
+        schoolId: schoolId,
         subjects: {
           connect: data.subjects?.map((subjectId: string) => ({
             id: parseInt(subjectId),
@@ -232,8 +248,30 @@ export const createTeacher = async (
     // revalidatePath("/list/teachers");
     return { success: true, error: false };
   } catch (err) {
-    console.log(err);
-    return { success: false, error: true };
+    console.error("Error creating teacher:", err);
+
+    // Handle Clerk-specific errors first
+    if (err && typeof err === 'object' && 'errors' in err) {
+      const clerkError = err as { errors: Array<{ code: string; message?: string; longMessage?: string }> };
+      console.error("Clerk API Error Details:", clerkError.errors);
+
+      const errorCode = clerkError.errors?.[0]?.code;
+      const errorMessage = clerkError.errors?.[0]?.message || clerkError.errors?.[0]?.longMessage;
+
+      if (errorCode === "form_identifier_exists") {
+        return { success: false, error: true, message: "Username already exists" };
+      } else if (errorCode === "form_password_pwned") {
+        return { success: false, error: true, message: "Password is too common. Please use a more secure password." };
+      } else if (errorCode === "form_password_length_too_short") {
+        return { success: false, error: true, message: "Password must be at least 8 characters long" };
+      } else if (errorCode === "form_username_invalid") {
+        return { success: false, error: true, message: "Username contains invalid characters" };
+      } else {
+        return { success: false, error: true, message: `Clerk Error: ${errorMessage || 'Invalid user data'}` };
+      }
+    }
+
+    return { success: false, error: true, message: "Failed to create teacher. Please try again." };
   }
 };
 
@@ -350,8 +388,30 @@ export const createStudent = async (
     // revalidatePath("/list/students");
     return { success: true, error: false };
   } catch (err) {
-    console.log(err);
-    return { success: false, error: true };
+    console.error("Error creating student:", err);
+
+    // Handle Clerk-specific errors first
+    if (err && typeof err === 'object' && 'errors' in err) {
+      const clerkError = err as { errors: Array<{ code: string; message?: string; longMessage?: string }> };
+      console.error("Clerk API Error Details:", clerkError.errors);
+
+      const errorCode = clerkError.errors?.[0]?.code;
+      const errorMessage = clerkError.errors?.[0]?.message || clerkError.errors?.[0]?.longMessage;
+
+      if (errorCode === "form_identifier_exists") {
+        return { success: false, error: true, message: "Username already exists" };
+      } else if (errorCode === "form_password_pwned") {
+        return { success: false, error: true, message: "Password is too common. Please use a more secure password." };
+      } else if (errorCode === "form_password_length_too_short") {
+        return { success: false, error: true, message: "Password must be at least 8 characters long" };
+      } else if (errorCode === "form_username_invalid") {
+        return { success: false, error: true, message: "Username contains invalid characters" };
+      } else {
+        return { success: false, error: true, message: `Clerk Error: ${errorMessage || 'Invalid user data'}` };
+      }
+    }
+
+    return { success: false, error: true, message: "Failed to create student. Please try again." };
   }
 };
 
@@ -526,48 +586,6 @@ export const deleteExam = async (
 };
 
 
-export const createSchool = async (
-  currentState: CurrentState,
-  data: SchoolSchema
-) => {
-  try {
-    console.log("Creating school with data:", data);
-    
-    // Only include code if it's not empty
-    const schoolData: any = {
-      name: data.name,
-      address: data.address || undefined,
-      phone: data.phone || undefined,
-      email: data.email || undefined,
-      logo: data.logo || undefined,
-      domain: data.domain || undefined,
-    };
-    
-    // Only add code if it's not empty
-    if (data.code && data.code.trim() !== '') {
-      schoolData.code = data.code;
-    }
-    
-    await prisma.school.create({
-      data: schoolData
-    });
-
-    console.log("School created successfully");
-    revalidatePath("/super-admin/schools");
-    return { success: true, error: false };
-  } catch (err) {
-    console.error("Error creating school:", err);
-    
-    // Check for specific error types
-    const prismaError = err as any;
-    if (prismaError.code === 'P2002' && prismaError.meta?.target?.includes('code')) {
-      console.error("School code already exists. Please use a unique code.");
-      return { success: false, error: true, message: "School code already exists" };
-    }
-    
-    return { success: false, error: true };
-  }
-}
 
 export const updateSchool = async (
   currentState: CurrentState,
@@ -619,3 +637,109 @@ export const deleteSchool = async (
     return { success: false, error: true };
   }
 }
+
+
+
+
+
+export const createSchoolWithAdmin = async (
+  currentState: CurrentState,
+  data: SchoolWithAdminSchema
+) => {
+  try {
+    console.log("Creating school with admin, data:", data);
+  
+    // Create Clerk user first
+    const clerkUserData: any = {
+      username: data.adminUsername,
+      password: data.adminPassword,
+      firstName: data.adminFirstName,
+      lastName: data.adminLastName,
+      publicMetadata: { role: "admin" }
+    };
+
+    // Only add email if it's provided and not empty
+    if (data.adminEmail && data.adminEmail.trim() !== '') {
+      clerkUserData.emailAddress = [data.adminEmail.trim()];
+    }
+
+    console.log("Clerk user data being sent:", {
+      ...clerkUserData,
+      password: "[HIDDEN]" // Don't log the actual password
+    });
+
+    const user = await clerkClient.users.createUser(clerkUserData);
+
+    const adminData = {
+      id: user.id,
+      username: data.adminUsername,
+      img: null, // Can be updated later
+    };
+
+    const schoolData: any = {
+      name: data.name,
+      address: data.address || undefined,
+      phone: data.phone || undefined,
+      email: data.email || undefined,
+      logo: data.logo || undefined,
+      domain: data.domain || undefined,
+      // Create admin and connect it to the school
+      admins: {
+        create: [adminData]
+      }
+    };
+
+    // Only add code if it's not empty
+    if (data.code && data.code.trim() !== '') {
+      schoolData.code = data.code;
+    }
+      
+    const school = await prisma.school.create({
+      data: schoolData,
+      include: {
+        admins: true,
+      }
+    });
+
+    console.log("School and admin created successfully:", school);
+    revalidatePath("/super-admin/schools");
+    return { success: true, error: false };
+
+  } catch (err) {
+    console.error("Error creating school with admin:", err);
+    
+    // Handle Clerk-specific errors first
+    if (err && typeof err === 'object' && 'errors' in err) {
+      const clerkError = err as { errors: Array<{ code: string; message?: string; longMessage?: string }> };
+      console.error("Clerk API Error Details:", clerkError.errors);
+      
+      const errorCode = clerkError.errors?.[0]?.code;
+      const errorMessage = clerkError.errors?.[0]?.message || clerkError.errors?.[0]?.longMessage;
+      
+      if (errorCode === "form_identifier_exists") {
+        return { success: false, error: true, message: "Admin username already exists" };
+      } else if (errorCode === "form_password_pwned") {
+        return { success: false, error: true, message: "Password is too common. Please use a more secure password." };
+      } else if (errorCode === "form_password_length_too_short") {
+        return { success: false, error: true, message: "Password must be at least 8 characters long" };
+      } else if (errorCode === "form_username_invalid") {
+        return { success: false, error: true, message: "Username contains invalid characters" };
+      } else {
+        return { success: false, error: true, message: `Clerk Error: ${errorMessage || 'Invalid user data'}` };
+      }
+    }
+    
+    // Handle Prisma errors
+    const prismaError = err as any;
+    if (prismaError.code === 'P2002') {
+      if (prismaError.meta?.target?.includes('code')) {
+        return { success: false, error: true, message: "School code already exists" };
+      }
+      if (prismaError.meta?.target?.includes('username')) {
+        return { success: false, error: true, message: "Admin username already exists" };
+      }
+    }
+    
+    return { success: false, error: true, message: "Failed to create school and admin. Please try again." };
+  }
+};

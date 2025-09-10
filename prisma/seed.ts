@@ -107,7 +107,7 @@ async function seedSchool(schoolId: string) {
     { name: "Art" },
   ];
 
-  const subjects = [];
+  const subjects: { id: number; name: string }[] = [];
   for (const subject of subjectData) {
     const newSubject = await prisma.subject.create({
       data: {

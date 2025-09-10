@@ -56,7 +56,7 @@ const TeacherForm = ({
     }
   }, [state, router, type, setOpen]);
 
-  const { subjects } = relatedData;
+  const { subjects } = relatedData || {};
 
   return (
     <form className="flex flex-col gap-8" onSubmit={onSubmit}>
@@ -171,11 +171,15 @@ const TeacherForm = ({
             {...register("subjects")}
             defaultValue={data?.subjects}
           >
-            {subjects.map((subject: { id: number; name: string }) => (
-              <option value={subject.id} key={subject.id}>
-                {subject.name}
-              </option>
-            ))}
+            {subjects && subjects.length > 0 ? (
+              subjects.map((subject: { id: number; name: string }) => (
+                <option value={subject.id} key={subject.id}>
+                  {subject.name}
+                </option>
+              ))
+            ) : (
+              <option disabled>No subjects available</option>
+            )}
           </select>
           {errors.subjects?.message && (
             <p className="text-xs text-red-400">

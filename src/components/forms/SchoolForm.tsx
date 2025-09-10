@@ -8,7 +8,6 @@ import {
   SchoolSchema,
 } from "@/lib/formValidationSchemas";
 import {
-  createSchool,
   updateSchool,
 } from "@/lib/actions";
 import { useFormState } from "react-dom";
@@ -51,15 +50,20 @@ const SchoolForm = ({ initialData }: SchoolFormProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [state, formAction] = useFormState(
-    initialData ? updateSchool : createSchool, 
+    updateSchool,
     initialState
   );
 
   const onSubmit = handleSubmit((data) => {
+    if (!initialData) {
+      toast.error("Use the School with Admin form to create new schools.");
+      return;
+    }
     console.log("Form data being submitted:", data);
     setIsSubmitting(true);
     // Include the uploaded image URL in the form data
-    formAction({...data, logo: img});
+    const formData = {...data, logo: img};
+    formAction(formData);
   });
 
   const router = useRouter();
@@ -68,22 +72,29 @@ const SchoolForm = ({ initialData }: SchoolFormProps) => {
     console.log("Form state:", state);
     setIsSubmitting(false);
     if (state.success) {
-      toast.success(initialData ? "School has been updated!" : "School has been created!");
+      toast.success("School has been updated!");
       router.push("/super-admin/schools");
     } else if (state.error) {
-      // Cast state to include possible message property
       const errorState = state as { success: boolean; error: boolean; message?: string };
       if (errorState.message === "School code already exists") {
         toast.error("School code already exists. Please use a unique code.");
       } else {
-        toast.error("Failed to create school. Please try again.");
+        toast.error("Failed to update school. Please try again.");
       }
     }
-  }, [state, router, initialData]);
+  }, [state, router]);
 
   return (
     <form className="flex flex-col gap-8" onSubmit={onSubmit}>
-      <h1 className="text-xl font-semibold">{initialData ? "Edit school" : "Create a new school"}</h1>
+      <h1 className="text-xl font-semibold">
+        {initialData ? "Edit school" : "School Form (For Updates Only)"}
+      </h1>
+
+      {!initialData && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded">
+          This form is for updating existing schools only. To create a new school with administrator, use the combined creation form.
+        </div>
+      )}
 
       <div className="flex justify-between flex-wrap gap-4">
         <InputField
@@ -118,7 +129,6 @@ const SchoolForm = ({ initialData }: SchoolFormProps) => {
           register={register}
           error={errors?.email}
         />
-
         <div className="flex flex-col gap-2 w-full md:w-1/4">
           <label className="text-xs text-gray-500">School Logo</label>
           <CldUploadWidget
@@ -199,11 +209,13 @@ const SchoolForm = ({ initialData }: SchoolFormProps) => {
         <button 
           type="submit" 
           className="bg-lamaPurple text-white p-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !initialData}
         >
-          {isSubmitting 
-            ? (initialData ? "Updating..." : "Creating...") 
-            : (initialData ? "Update School" : "Create School")
+          {!initialData 
+            ? "Cannot Create (Use Combined Form)" 
+            : isSubmitting 
+              ? "Updating..." 
+              : "Update School"
           }
         </button>
       </div>
