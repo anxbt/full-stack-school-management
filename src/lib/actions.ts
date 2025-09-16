@@ -743,3 +743,202 @@ export const createSchoolWithAdmin = async (
     return { success: false, error: true, message: "Failed to create school and admin. Please try again." };
   }
 };
+
+
+
+
+export const getClassesForTeacherAttendance = async (teacherId: string) => {
+  try {
+    // Get classes where the teacher is a supervisor
+    const classes = await prisma.class.findMany({
+      where: {
+        supervisorId: teacherId
+      },
+      include: {
+        grade: true,
+        _count: {
+          select: {
+            students: true
+          }
+        }
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    return {
+      success: true,
+      error: false,
+      data: classes
+    };
+  } catch (err) {
+    console.error("Error fetching classes for attendance:", err);
+    return {
+      success: false,
+      error: true,
+      message: "Failed to fetch classes"
+    };
+  }
+};
+
+export const getStudentsForAttendance = async (
+  classId: number,
+  date: Date
+) => {
+  try {
+    const dayofWeek = date.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+
+    const firstLesson=await prisma.lesson.findFirst({
+      where:{
+        classId:classId,
+        day:dayofWeek as any
+      },orderBy:{startTime:'asc'} 
+    })
+     if (!firstLesson) {
+      return {
+        success: false,
+        error: true,
+        message: "No lessons found for this class today"
+      };
+    }
+    // Get all students for the given class
+    const students = await prisma.student.findMany({
+      where: {
+        classId: classId
+      },
+      include: {
+        attendances: {
+          where: {
+            lessonId: firstLesson.id,
+            date: date
+          }
+        }
+      },
+      orderBy: {
+        name: 'asc' 
+      }
+    });
+
+    const formattedStudents = students.map(student => ({
+      studentId: student.id,
+      name: student.name,
+      surname: student.surname,
+      img: student.img,
+      currentAttendance: student.attendances.length > 0 
+        ? {
+            attendanceId: student.attendances[0].id,
+            present: student.attendances[0].present
+          } 
+        : {}
+    }));
+
+    return { 
+      success: true, 
+      error: false,
+      data: formattedStudents
+    };
+  } catch (err) {
+    console.log(err);
+    return { 
+      success: false, 
+      error: true,
+      message: "Failed to fetch students for attendance"
+    };
+  }
+}
+
+export const saveAttendance = async (
+  classId: number,
+  date: Date,
+  teacherId: string,
+  schoolId: string,
+  attendanceRecords: Array<{ studentId: string, present: boolean }>
+) => {
+  try {
+
+    const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+    
+    const firstLesson = await prisma.lesson.findFirst({
+      where: {
+        classId: classId,
+        day: dayOfWeek as any
+      },
+      orderBy: { startTime: 'asc' }
+    });
+
+    if (!firstLesson) {
+      return {
+        success: false,
+        error: true,
+        message: "No lessons found for this class today"
+      };
+    }
+    // Step 1: Verify teacher is supervisor of this specific class
+    const teacherClass = await prisma.class.findFirst({
+      where: { 
+        id: classId,
+        supervisorId: teacherId 
+      }
+    });
+
+    if (!teacherClass) {
+      return {
+        success: false,
+        error: true,
+        message: "You don't have permission to take attendance for this class"
+      };
+    }
+
+    // Step 2: Check for existing attendance records for this lesson and date
+    const existingAttendances = await prisma.attendance.findMany({
+      where: {
+        lessonId: firstLesson.id,
+        date: date
+      }
+    });
+
+    // Step 3: Process attendance data
+    if (existingAttendances.length > 0) {
+      // Update existing records
+      const updatePromises = attendanceRecords.map(record => 
+        prisma.attendance.updateMany({
+          where: {
+            studentId: record.studentId,
+            lessonId: firstLesson.id,
+            date: date
+          },
+          data: { 
+            present: record.present
+          }
+        })
+      );
+      
+      await Promise.all(updatePromises);
+    } else {
+      // Create new records
+      await prisma.attendance.createMany({
+        data: attendanceRecords.map(record => ({
+          studentId: record.studentId,
+          present: record.present,
+          date: date,
+          lessonId: firstLesson.id,
+          schoolId: schoolId
+        }))
+      });
+    }
+
+    return {
+      success: true,
+      error: false,
+      message: "Attendance saved successfully"
+    };
+  } catch (err) {
+    console.error("Error saving attendance:", err);
+    return {
+      success: false,
+      error: true,
+      message: "Failed to save attendance"
+    };
+  }
+};
