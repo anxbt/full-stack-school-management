@@ -70,13 +70,13 @@ export default function AttendancePage() {
       if (!userId) return;
       const classesResult = await getClassesForTeacherAttendance(userId);
 
-      if (classesResult.success) {
+      if (classesResult.success && classesResult.data) {
         const mappedClasses = classesResult.data.map((c: any) => ({
           id: c.id,
           name: c.name,
           studentCount: c._count?.students ?? 0,
           attendanceStatus: c.attendanceStatus ? 'taken' : 'not-taken'
-        }))
+        }));
 
         setFetchedClasses(mappedClasses);
       } else {
@@ -153,7 +153,11 @@ export default function AttendancePage() {
     }, 1000);
   };
 
-  //
+
+  const handleSaveAttendance = async (attendanceData: { studentId: string; present: boolean }[]) => {
+   
+    }
+  
   const selectedClass = fetchedClasses.find(c => c.id === selectedClassId);
 
   return (

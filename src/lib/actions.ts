@@ -15,6 +15,14 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
 import { unstable_cache } from "next/cache";
 
+// Helper function to get schoolId (you'll need to implement proper school context later)
+async function getSchoolId(): Promise<string> {
+  const firstSchool = await prisma.school.findFirst({
+    select: { id: true }
+  });
+  return firstSchool?.id || "school-1";
+}
+
 type CurrentState = { 
   success: boolean; 
   error: boolean;
@@ -77,9 +85,22 @@ export const createSubject = async (
   data: SubjectSchema
 ) => {
   try {
+    // For now, use a default school ID or get from session
+    // You'll need to implement proper school context later
+    let schoolId = "school-1"; // Default to first school for testing
+    
+    // Try to get the first available school
+    const firstSchool = await prisma.school.findFirst({
+      select: { id: true }
+    });
+    if (firstSchool) {
+      schoolId = firstSchool.id;
+    }
+
     await prisma.subject.create({
       data: {
         name: data.name,
+        schoolId: schoolId,
         teachers: {
           connect: data.teachers.map((teacherId) => ({ id: teacherId })),
         },
@@ -144,8 +165,23 @@ export const createClass = async (
   data: ClassSchema
 ) => {
   try {
+    // For now, use a default school ID or get from session
+    // You'll need to implement proper school context later
+    let schoolId = "school-1"; // Default to first school for testing
+    
+    // Try to get the first available school
+    const firstSchool = await prisma.school.findFirst({
+      select: { id: true }
+    });
+    if (firstSchool) {
+      schoolId = firstSchool.id;
+    }
+
     await prisma.class.create({
-      data,
+      data: {
+        ...data,
+        schoolId: schoolId,
+      },
     });
 
     // revalidatePath("/list/class");
@@ -382,6 +418,7 @@ export const createStudent = async (
         gradeId: data.gradeId,
         classId: data.classId,
         parentId: data.parentId,
+        schoolId: await getSchoolId(), // Use helper function to get schoolId
       },
     });
 
@@ -508,6 +545,7 @@ export const createExam = async (
         startTime: data.startTime,
         endTime: data.endTime,
         lessonId: data.lessonId,
+        schoolId: await getSchoolId(),
       },
     });
 
@@ -942,3 +980,9 @@ export const saveAttendance = async (
     };
   }
 };
+
+
+// schollId field missing in createSubject - missing schoolId
+// createClass 
+// createStudent 
+// createExam 
