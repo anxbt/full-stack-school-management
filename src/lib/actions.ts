@@ -15,13 +15,8 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { Prisma } from "@prisma/client";
 import { unstable_cache } from "next/cache";
 
-// Helper function to get schoolId (you'll need to implement proper school context later)
-async function getSchoolId(): Promise<string> {
-  const firstSchool = await prisma.school.findFirst({
-    select: { id: true }
-  });
-  return firstSchool?.id || "school-1";
-}
+// Import the new auth system
+import { getCurrentUserSchoolId, SchoolService } from "./auth";
 
 type CurrentState = { 
   success: boolean; 
@@ -85,17 +80,8 @@ export const createSubject = async (
   data: SubjectSchema
 ) => {
   try {
-    // For now, use a default school ID or get from session
-    // You'll need to implement proper school context later
-    let schoolId = "school-1"; // Default to first school for testing
-    
-    // Try to get the first available school
-    const firstSchool = await prisma.school.findFirst({
-      select: { id: true }
-    });
-    if (firstSchool) {
-      schoolId = firstSchool.id;
-    }
+    // Get school ID based on current user context
+    const schoolId = await getCurrentUserSchoolId();
 
     await prisma.subject.create({
       data: {
@@ -165,17 +151,8 @@ export const createClass = async (
   data: ClassSchema
 ) => {
   try {
-    // For now, use a default school ID or get from session
-    // You'll need to implement proper school context later
-    let schoolId = "school-1"; // Default to first school for testing
-    
-    // Try to get the first available school
-    const firstSchool = await prisma.school.findFirst({
-      select: { id: true }
-    });
-    if (firstSchool) {
-      schoolId = firstSchool.id;
-    }
+    // Get school ID based on current user context
+    const schoolId = await getCurrentUserSchoolId();
 
     await prisma.class.create({
       data: {
@@ -418,7 +395,7 @@ export const createStudent = async (
         gradeId: data.gradeId,
         classId: data.classId,
         parentId: data.parentId,
-        schoolId: await getSchoolId(), // Use helper function to get schoolId
+        schoolId: await getCurrentUserSchoolId(),
       },
     });
 
@@ -545,7 +522,7 @@ export const createExam = async (
         startTime: data.startTime,
         endTime: data.endTime,
         lessonId: data.lessonId,
-        schoolId: await getSchoolId(),
+        schoolId: await getCurrentUserSchoolId(),
       },
     });
 
